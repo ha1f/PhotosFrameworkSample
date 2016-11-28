@@ -27,7 +27,7 @@ class CheckBoxView: UIView {
         let RectCheck = CGRect(x: 5, y: 5, width: rect.width - 10, height: rect.height - 10)
         
         if self.isSelected {
-            ovalColor = UIColor(red: 85/255, green: 185/255, blue: 1/255, alpha: 1)
+            ovalColor = UIColor(red: 85/255, green: 185/255, blue: 1/255, alpha: 0.8)
             ovalFrameColor = UIColor.black
             checkColor = UIColor.white
         }else{

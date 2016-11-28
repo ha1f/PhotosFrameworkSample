@@ -40,11 +40,7 @@ class GridViewCell: UICollectionViewCell {
     
     override var isSelected: Bool {
         didSet {
-            if isSelected {
-                self.bringSubview(toFront: selectedBackgroundView!)
-            } else {
-                self.sendSubview(toBack: selectedBackgroundView!)
-            }
+            checkBoxView.isHidden = !isSelected
         }
     }
     
@@ -52,18 +48,10 @@ class GridViewCell: UICollectionViewCell {
         let boxWidth = frame.width * 0.5
         let boxRect = CGRect(origin: .zero, size: CGSize(width: boxWidth, height: boxWidth))
         
-        /*let falseBox = CheckBoxView(frame: boxRect, selected: false)
-        self.addSubview(falseBox)*/
+        checkBoxView = CheckBoxView(frame: boxRect, selected: true)
+        checkBoxView.isHidden = !isSelected
         
-        let trueBox = CheckBoxView(frame: boxRect, selected: true)
-        let backView = UIView(frame: frame)
-        backView.backgroundColor = UIColor.clear
-        backView.isUserInteractionEnabled = false
-        backView.addSubview(trueBox)
-        self.selectedBackgroundView = backView
-        
-        // backViewだけど最前面に持ってくる！！
-        self.bringSubview(toFront: selectedBackgroundView!)
+        self.addSubview(checkBoxView)
     }
 
     override func prepareForReuse() {
