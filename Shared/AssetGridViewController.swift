@@ -46,6 +46,8 @@ class AssetGridViewController: UICollectionViewController {
         
         let gestureRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(self.onCellPressedLong(_:)))
         collectionView?.addGestureRecognizer(gestureRecognizer)
+        
+        collectionView?.allowsMultipleSelection = true
     }
 
     deinit {
@@ -73,11 +75,11 @@ class AssetGridViewController: UICollectionViewController {
         updateCachedAssets()
     }
 
+    // 詳細への遷移
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         guard let destination = segue.destination as? AssetViewController else {
             fatalError("unexpected view controller for segue")
         }
-
         let indexPath = sender as! IndexPath
         destination.asset = fetchResult.object(at: indexPath.item)
         destination.assetCollection = assetCollection
@@ -122,17 +124,7 @@ class AssetGridViewController: UICollectionViewController {
         }
     }
     
-    override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        print("select")
-    }
-    
-    override func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
-        print("deselect")
-    }
-    
-    override func collectionView(_ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath) {
-        print("hilight")
-    }
+    // 本当はhilightでもアニメーションしたい
 
     // MARK: UIScrollView
 
