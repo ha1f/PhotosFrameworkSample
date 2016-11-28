@@ -11,6 +11,10 @@ import UIKit
 import Photos
 import PhotosUI
 
+protocol SelectAssetsDelegate: class {
+    func onSelectedAssets(selectedAssets: [PHAsset], assetCollection: PHAssetCollection)
+}
+
 private extension UICollectionView {
     func indexPathsForElements(in rect: CGRect) -> [IndexPath] {
         let allLayoutAttributes = collectionViewLayout.layoutAttributesForElements(in: rect)!
@@ -23,11 +27,17 @@ class AssetGridViewController: UICollectionViewController {
     var fetchResult: PHFetchResult<PHAsset>!
     var assetCollection: PHAssetCollection!
 
-    @IBOutlet var addButtonItem: UIBarButtonItem!
+    @IBOutlet var doneButtonItem: UIBarButtonItem!
 
     fileprivate let imageManager = PHCachingImageManager()
     fileprivate var thumbnailSize: CGSize!
     fileprivate var previousPreheatRect = CGRect.zero
+    
+    weak var delegate: SelectAssetsDelegate?
+    
+    var selectedAssets: [PHAsset] {
+        return fetchResult.objects(at: IndexSet(self.collectionView!.indexPathsForSelectedItems!.map { $0.item }))
+    }
 
     // MARK: UIViewController / Lifecycle
 
@@ -59,15 +69,12 @@ class AssetGridViewController: UICollectionViewController {
 
         // thumbnailsのサイズを計算
         let scale = UIScreen.main.scale
-        let cellSize = (collectionViewLayout as! UICollectionViewFlowLayout).itemSize
+        // let cellSize = (collectionViewLayout as! UICollectionViewFlowLayout).itemSize
+        let cellSize = self.cellSize
         thumbnailSize = CGSize(width: cellSize.width * scale, height: cellSize.height * scale)
 
-        // 追加できるなら追加ボタンを表示
-        if assetCollection == nil || assetCollection.canPerform(.addContent) {
-            navigationItem.rightBarButtonItem = addButtonItem
-        } else {
-            navigationItem.rightBarButtonItem = nil
-        }
+        // 完了ボタン
+        navigationItem.rightBarButtonItem = doneButtonItem
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -75,7 +82,7 @@ class AssetGridViewController: UICollectionViewController {
         updateCachedAssets()
     }
 
-    // 詳細への遷移
+    // Asset詳細への遷移
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         guard let destination = segue.destination as? AssetViewController else {
             fatalError("unexpected view controller for segue")
@@ -192,7 +199,7 @@ class AssetGridViewController: UICollectionViewController {
             return ([new], [old])
         }
     }
-
+    
     // MARK: UI Actions
 
     @IBAction func addAsset(_ sender: AnyObject?) {
@@ -202,12 +209,17 @@ class AssetGridViewController: UICollectionViewController {
             CGSize(width: 400, height: 300) :
             CGSize(width: 300, height: 400)
         let renderer = UIGraphicsImageRenderer(size: size)
+        let color = UIColor(hue: CGFloat(arc4random_uniform(100))/100,
+                            saturation: 1, brightness: 1, alpha: 1)
         let image = renderer.image { context in
-            UIColor(hue: CGFloat(arc4random_uniform(100))/100,
-                    saturation: 1, brightness: 1, alpha: 1).setFill()
+            color.setFill()
             context.fill(context.format.bounds)
         }
-
+        
+        addAsset(image: image)
+    }
+    
+    private func addAsset(image: UIImage) {
         // photo libraryに追加
         PHPhotoLibrary.shared().performChanges({
             let creationRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
@@ -222,6 +234,52 @@ class AssetGridViewController: UICollectionViewController {
         }
     }
 
+}
+
+extension AssetGridViewController: UICollectionViewDelegateFlowLayout {
+    // MARK: LayoutDelegates
+    // 横に並ぶセルの数
+    static let HORIZONTAL_CELLS_COUNT: CGFloat = 3
+    // セルの間隔
+    static let CELLS_MARGIN: CGFloat = 1
+    // 周りの余白
+    private var edgeInsets: UIEdgeInsets {
+        return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+    }
+    
+    fileprivate var cellSize: CGSize {
+        let space = type(of: self).CELLS_MARGIN
+        
+        let contentWidth: CGFloat
+        if let direction = (collectionViewLayout as? UICollectionViewFlowLayout)?.scrollDirection, direction == .horizontal {
+            // 横スクロールなら縦並びのセル数として計算
+            contentWidth = collectionView!.bounds.height - edgeInsets.top - edgeInsets.bottom
+        } else {
+            contentWidth = collectionView!.bounds.width - edgeInsets.right - edgeInsets.left
+        }
+        
+        let cellLength = (contentWidth - space * (type(of: self).HORIZONTAL_CELLS_COUNT-1)) / type(of: self).HORIZONTAL_CELLS_COUNT
+        
+        return CGSize(width: cellLength, height: cellLength)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        return cellSize
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, insetForSectionAt section: Int) -> UIEdgeInsets {
+        return edgeInsets
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
+        let space = type(of: self).CELLS_MARGIN
+        return space
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
+        let space = type(of: self).CELLS_MARGIN
+        return space
+    }
 }
 
 // MARK: PHPhotoLibraryChangeObserver
