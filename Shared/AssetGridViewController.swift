@@ -12,7 +12,7 @@ import Photos
 import PhotosUI
 
 protocol SelectAssetsDelegate: class {
-    func onSelectedAssets(selectedAssets: [PHAsset], assetCollection: PHAssetCollection)
+    func onFinishSelectingAssets(selectedAssets: [PHAsset], assetCollection: PHAssetCollection)
 }
 
 private extension UICollectionView {
@@ -75,6 +75,11 @@ class AssetGridViewController: UICollectionViewController {
 
         // 完了ボタン
         navigationItem.rightBarButtonItem = doneButtonItem
+        doneButtonItem.action = #selector(self.onFinishSelectingAssets)
+    }
+    
+    func onFinishSelectingAssets() {
+        delegate?.onFinishSelectingAssets(selectedAssets: selectedAssets, assetCollection: assetCollection)
     }
 
     override func viewDidAppear(_ animated: Bool) {
