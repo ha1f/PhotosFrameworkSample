@@ -9,11 +9,9 @@
 
 import UIKit
 import Photos
+#if os(iOS)
 import PhotosUI
-
-protocol SelectAssetsDelegate: class {
-    func onFinishSelectingAssets(selectedAssets: [PHAsset], assetCollection: PHAssetCollection)
-}
+#endif
 
 private extension UICollectionView {
     func indexPathsForElements(in rect: CGRect) -> [IndexPath] {
@@ -27,17 +25,11 @@ class AssetGridViewController: UICollectionViewController {
     var fetchResult: PHFetchResult<PHAsset>!
     var assetCollection: PHAssetCollection!
 
-    @IBOutlet var doneButtonItem: UIBarButtonItem!
+//    @IBOutlet var addButtonItem: UIBarButtonItem!
 
     fileprivate let imageManager = PHCachingImageManager()
     fileprivate var thumbnailSize: CGSize!
     fileprivate var previousPreheatRect = CGRect.zero
-    
-    weak var delegate: SelectAssetsDelegate?
-    
-    var selectedAssets: [PHAsset] {
-        return fetchResult.objects(at: IndexSet(self.collectionView!.indexPathsForSelectedItems!.map { $0.item }))
-    }
 
     // MARK: UIViewController / Lifecycle
 
@@ -47,17 +39,12 @@ class AssetGridViewController: UICollectionViewController {
         resetCachedAssets()
         PHPhotoLibrary.shared().register(self)
 
-        // fetchResultが空ならallPhotosを取得
+        // fetchResultが指定されてないなら"AllPhotos"を取得
         if fetchResult == nil {
             let allPhotosOptions = PHFetchOptions()
             allPhotosOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
             fetchResult = PHAsset.fetchAssets(with: allPhotosOptions)
         }
-        
-        let gestureRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(self.onCellPressedLong(_:)))
-        collectionView?.addGestureRecognizer(gestureRecognizer)
-        
-        collectionView?.allowsMultipleSelection = true
     }
 
     deinit {
@@ -67,19 +54,17 @@ class AssetGridViewController: UICollectionViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
 
-        // thumbnailsのサイズを計算
+        // Determine the size of the thumbnails to request from the PHCachingImageManager
         let scale = UIScreen.main.scale
-        // let cellSize = (collectionViewLayout as! UICollectionViewFlowLayout).itemSize
-        let cellSize = self.cellSize
+        let cellSize = (collectionViewLayout as! UICollectionViewFlowLayout).itemSize
         thumbnailSize = CGSize(width: cellSize.width * scale, height: cellSize.height * scale)
 
-        // 完了ボタン
-        navigationItem.rightBarButtonItem = doneButtonItem
-        doneButtonItem.action = #selector(self.onFinishSelectingAssets)
-    }
-    
-    func onFinishSelectingAssets() {
-        delegate?.onFinishSelectingAssets(selectedAssets: selectedAssets, assetCollection: assetCollection)
+        // Addボタンをを出せるなら出す（今回は不要なので削除）
+//        if assetCollection == nil || assetCollection.canPerform(.addContent) {
+//            navigationItem.rightBarButtonItem = addButtonItem
+//        } else {
+//            navigationItem.rightBarButtonItem = nil
+//        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -87,12 +72,11 @@ class AssetGridViewController: UICollectionViewController {
         updateCachedAssets()
     }
 
-    // Asset詳細への遷移
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
-        guard let destination = segue.destination as? AssetViewController else {
-            fatalError("unexpected view controller for segue")
-        }
-        let indexPath = sender as! IndexPath
+        guard let destination = segue.destination as? AssetViewController
+            else { fatalError("unexpected view controller for segue") }
+
+        let indexPath = collectionView!.indexPath(for: sender as! UICollectionViewCell)!
         destination.asset = fetchResult.object(at: indexPath.item)
         destination.assetCollection = assetCollection
     }
@@ -106,37 +90,29 @@ class AssetGridViewController: UICollectionViewController {
     override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let asset = fetchResult.object(at: indexPath.item)
 
-        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: String(describing: GridViewCell.self), for: indexPath) as? GridViewCell else {
-            fatalError("unexpected cell in collection view")
-        }
+        // Dequeue a GridViewCell.
+        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: String(describing: GridViewCell.self), for: indexPath) as? GridViewCell
+            else { fatalError("unexpected cell in collection view") }
 
-        // Live Photoならバッジを表示
+        #if os(iOS)
+        // Live Photoのバッジを表示
         if asset.mediaSubtypes.contains(.photoLive) {
             cell.livePhotoBadgeImage = PHLivePhotoView.livePhotoBadgeImage(options: .overContent)
         }
+        #endif
         
+        // Request an image for the asset from the PHCachingImageManager.
         cell.representedAssetIdentifier = asset.localIdentifier
         imageManager.requestImage(for: asset, targetSize: thumbnailSize, contentMode: .aspectFill, options: nil, resultHandler: { image, _ in
-            // 遅延してすでに違う可能性を考慮
+            // fetch完了時にすでに違うセルとして使いまわされてるかも
             if cell.representedAssetIdentifier == asset.localIdentifier {
                 cell.thumbnailImage = image
             }
         })
+
         return cell
+
     }
-    
-    func onCellPressedLong(_ recognizer: UILongPressGestureRecognizer) {
-        guard recognizer.view! == collectionView! else {
-            return
-        }
-        if recognizer.state == .began {
-            let point = recognizer.location(in: recognizer.view)
-            let indexPath = self.collectionView!.indexPathForItem(at: point)!
-            self.performSegue(withIdentifier: "showAsset", sender: indexPath)
-        }
-    }
-    
-    // 本当はhilightでもアニメーションしたい
 
     // MARK: UIScrollView
 
@@ -155,14 +131,14 @@ class AssetGridViewController: UICollectionViewController {
         // visibleなときだけupdate
         guard isViewLoaded && view.window != nil else { return }
 
-        // preheat windowは見える領域の倍の高さ
+        // preheat windowは見える高さの倍
         let preheatRect = view!.bounds.insetBy(dx: 0, dy: -0.5 * view!.bounds.height)
 
         // Update only if the visible area is significantly different from the last preheated area.
         let delta = abs(preheatRect.midY - previousPreheatRect.midY)
         guard delta > view.bounds.height / 3 else { return }
 
-        // キャッシュすべきアセットを計算、キャッシュ
+        // キャッシュ対象領域を計算・適用
         let (addedRects, removedRects) = differencesBetweenRects(previousPreheatRect, preheatRect)
         let addedAssets = addedRects
             .flatMap { rect in collectionView!.indexPathsForElements(in: rect) }
@@ -171,11 +147,13 @@ class AssetGridViewController: UICollectionViewController {
             .flatMap { rect in collectionView!.indexPathsForElements(in: rect) }
             .map { indexPath in fetchResult.object(at: indexPath.item) }
 
+        // Update the assets the PHCachingImageManager is caching.
         imageManager.startCachingImages(for: addedAssets,
             targetSize: thumbnailSize, contentMode: .aspectFill, options: nil)
         imageManager.stopCachingImages(for: removedAssets,
             targetSize: thumbnailSize, contentMode: .aspectFill, options: nil)
 
+        // Store the preheat rect to compare against in the future.
         previousPreheatRect = preheatRect
     }
 
@@ -204,7 +182,7 @@ class AssetGridViewController: UICollectionViewController {
             return ([new], [old])
         }
     }
-    
+
     // MARK: UI Actions
 
     @IBAction func addAsset(_ sender: AnyObject?) {
@@ -214,92 +192,44 @@ class AssetGridViewController: UICollectionViewController {
             CGSize(width: 400, height: 300) :
             CGSize(width: 300, height: 400)
         let renderer = UIGraphicsImageRenderer(size: size)
-        let color = UIColor(hue: CGFloat(arc4random_uniform(100))/100,
-                            saturation: 1, brightness: 1, alpha: 1)
         let image = renderer.image { context in
-            color.setFill()
+            UIColor(hue: CGFloat(arc4random_uniform(100))/100,
+                    saturation: 1, brightness: 1, alpha: 1).setFill()
             context.fill(context.format.bounds)
         }
-        
-        addAsset(image: image)
-    }
-    
-    private func addAsset(image: UIImage) {
-        // photo libraryに追加
+
+        // Add it to the photo library.
         PHPhotoLibrary.shared().performChanges({
             let creationRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
             if let assetCollection = self.assetCollection {
                 let addAssetRequest = PHAssetCollectionChangeRequest(for: assetCollection)
                 addAssetRequest?.addAssets([creationRequest.placeholderForCreatedAsset!] as NSArray)
             }
-        }) { success, error in
-            if !success {
-                print("error creating asset: \(error)")
-            }
-        }
+        }, completionHandler: {success, error in
+            if !success { print("error creating asset: \(error)") }
+        })
     }
 
-}
-
-extension AssetGridViewController: UICollectionViewDelegateFlowLayout {
-    // MARK: LayoutDelegates
-    // 横に並ぶセルの数
-    static let HORIZONTAL_CELLS_COUNT: CGFloat = 3
-    // セルの間隔
-    static let CELLS_MARGIN: CGFloat = 1
-    // 周りの余白
-    private var edgeInsets: UIEdgeInsets {
-        return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-    }
-    
-    fileprivate var cellSize: CGSize {
-        let space = type(of: self).CELLS_MARGIN
-        
-        let contentWidth: CGFloat
-        if let direction = (collectionViewLayout as? UICollectionViewFlowLayout)?.scrollDirection, direction == .horizontal {
-            // 横スクロールなら縦並びのセル数として計算
-            contentWidth = collectionView!.bounds.height - edgeInsets.top - edgeInsets.bottom
-        } else {
-            contentWidth = collectionView!.bounds.width - edgeInsets.right - edgeInsets.left
-        }
-        
-        let cellLength = (contentWidth - space * (type(of: self).HORIZONTAL_CELLS_COUNT-1)) / type(of: self).HORIZONTAL_CELLS_COUNT
-        
-        return CGSize(width: cellLength, height: cellLength)
-    }
-    
-    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        return cellSize
-    }
-    
-    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, insetForSectionAt section: Int) -> UIEdgeInsets {
-        return edgeInsets
-    }
-    
-    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
-        let space = type(of: self).CELLS_MARGIN
-        return space
-    }
-    
-    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
-        let space = type(of: self).CELLS_MARGIN
-        return space
-    }
 }
 
 // MARK: PHPhotoLibraryChangeObserver
 extension AssetGridViewController: PHPhotoLibraryChangeObserver {
     func photoLibraryDidChange(_ changeInstance: PHChange) {
+
         guard let changes = changeInstance.changeDetails(for: fetchResult)
             else { return }
 
+        // Change notifications may be made on a background queue. Re-dispatch to the
+        // main queue before acting on the change as we'll be updating the UI.
         DispatchQueue.main.sync {
-            // 再フェッチして更新
+            // Hang on to the new fetch result.
             fetchResult = changes.fetchResultAfterChanges
             if changes.hasIncrementalChanges {
+                // If we have incremental diffs, animate them in the collection view.
                 guard let collectionView = self.collectionView else { fatalError() }
                 collectionView.performBatchUpdates({
-                    // delete, insert, reload, moveの順で更新するとインデックスがわかりやすい
+                    // For indexes to make sense, updates must be in this order:
+                    // delete, insert, reload, move
                     if let removed = changes.removedIndexes, removed.count > 0 {
                         collectionView.deleteItems(at: removed.map({ IndexPath(item: $0, section: 0) }))
                     }
@@ -315,6 +245,7 @@ extension AssetGridViewController: PHPhotoLibraryChangeObserver {
                     }
                 })
             } else {
+                // Reload the collection view if incremental diffs are not available.
                 collectionView!.reloadData()
             }
             resetCachedAssets()

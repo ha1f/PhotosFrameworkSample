@@ -99,7 +99,7 @@ class MasterViewController: UITableViewController {
 
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
 
-        guard let destination = (segue.destination as? UINavigationController)?.topViewController as? AssetGridViewController
+        guard let destination = (segue.destination as? UINavigationController)?.topViewController as? MusubiAssetGridViewController
             else { fatalError("unexpected view controller for segue") }
         let cell = sender as! UITableViewCell
 
